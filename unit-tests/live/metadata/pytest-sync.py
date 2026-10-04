@@ -4,6 +4,7 @@
 import pytest
 import pyrealsense2 as rs
 from pytest_check import check
+import os
 import time
 import logging
 log = logging.getLogger(__name__)
@@ -163,6 +164,18 @@ def run_test(device, ctx, resolution, fps):
 def test_synchronized_frames(test_device):
     """Verify that timestamps of depth, infrared and color frames are consistent across configurations"""
     device, ctx = test_device
+
+    # RSDSO-21966 delay sweep: RS_RGB_START_DELAY_MS=<ms> holds the FW colour start by that
+    # much (HWMC RGB_START_DELAY_MS, opcode 0x96, firmware branch RSDSO-21966-rgb-start-delay).
+    delay_ms = os.environ.get("RS_RGB_START_DELAY_MS")
+    if delay_ms is not None:
+        delay_ms = int(delay_ms)
+        dp = rs.debug_protocol(device)
+        dp.send_and_receive_raw_data(dp.build_command(0x96, 0, 0, delay_ms, 0))
+        raw = dp.send_and_receive_raw_data(dp.build_command(0x96, 1, 0, 0, 0))
+        applied = int.from_bytes(bytes(raw[4:8]), "little")
+        log.info(f"RGB start delay set to {delay_ms} ms, FW reports {applied} ms")
+        assert applied == delay_ms, f"FW did not take the RGB start delay ({applied} != {delay_ms})"
 
     time.sleep(1)  # let device settle after hub power-cycle, before first pipeline.start
     for resolution, fps in CONFIGURATIONS:
