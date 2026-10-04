@@ -161,13 +161,17 @@ def run_test(device, ctx, resolution, fps):
         pipeline.stop()
 
 
-def test_synchronized_frames(test_device):
+def test_synchronized_frames(test_device, request):
     """Verify that timestamps of depth, infrared and color frames are consistent across configurations"""
     device, ctx = test_device
 
-    # RSDSO-21966 delay sweep: RS_RGB_START_DELAY_MS=<ms> holds the FW colour start by that
-    # much (HWMC RGB_START_DELAY_MS, opcode 0x96, firmware branch RSDSO-21966-rgb-start-delay).
+    # RSDSO-21966 delay sweep: hold the FW colour start by N ms (HWMC RGB_START_DELAY_MS, opcode 0x96,
+    # firmware branch RSDSO-21966-rgb-start-delay). N comes from the env var RS_RGB_START_DELAY_MS or from
+    # a context word "rgbdelay=N" (e.g. --context "nightly rgbdelay=60"), so a CI job can set it per run.
     delay_ms = os.environ.get("RS_RGB_START_DELAY_MS")
+    for word in request.config.getoption("--context", default="").split():
+        if word.startswith("rgbdelay="):
+            delay_ms = word.split("=", 1)[1]
     if delay_ms is not None:
         delay_ms = int(delay_ms)
         dp = rs.debug_protocol(device)
